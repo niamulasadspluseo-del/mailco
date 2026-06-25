@@ -363,14 +363,20 @@ export const auth = {
     if (!data.user || !data.user.identities?.length) throw new Error("An account with this email already exists");
     return { id: data.user.id, name, email, password: "", role: "customer" as Role, status: "active" as UserStatus, verified: !!data.session, createdAt: Date.now() } as User;
   },
-  async login(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  async login(loginEmail: string, password: string) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
     if (error) throw new Error(error.message);
     if (!data.user) throw new Error("Invalid credentials");
     await resolveSession();
     await loadUserScopedData();
     emit();
     const user = profileToUser(currentProfile ?? { id: data.user.id, name: data.user.user_metadata?.name ?? data.user.email, email: data.user.email, status: "active", created_at: data.user.created_at }, currentRole);
+    if (user.email.toLowerCase() !== loginEmail.toLowerCase()) {
+      await supabase.auth.signOut();
+      db.sessionUserId = null; currentProfile = null; currentRole = "customer";
+      emit();
+      throw new Error("Login failed: email mismatch. Please contact support.");
+    }
     if (user.status === "banned") {
       await supabase.auth.signOut();
       db.sessionUserId = null; currentProfile = null; currentRole = "customer";
